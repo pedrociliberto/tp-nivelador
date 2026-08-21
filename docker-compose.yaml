@@ -9,7 +9,7 @@ services:
       - SERVER_HOST=server
       - SERVER_PORT=5678
 
-  client_0:
+  client_0: &client-template
     build:
       context: ./services/client
       dockerfile: Dockerfile
@@ -18,5 +18,37 @@ services:
       - server
     environment:
       - AGENCY_ID=0
+      - SERVER_HOST=server
+      - SERVER_PORT=5678
+
+  client_1:
+    <<: *client-template
+    container_name: client_1
+    environment:
+      - AGENCY_ID=1
+      - SERVER_HOST=server
+      - SERVER_PORT=5678
+
+  client_2:
+    <<: *client-template
+    container_name: client_2
+    environment:
+      - AGENCY_ID=2
+      - SERVER_HOST=server
+      - SERVER_PORT=5678
+
+  client_3:
+    <<: *client-template
+    container_name: client_3
+    environment:
+      - AGENCY_ID=3
+      - SERVER_HOST=server
+      - SERVER_PORT=5678
+
+  client_4:
+    <<: *client-template
+    container_name: client_4
+    environment:
+      - AGENCY_ID=4
       - SERVER_HOST=server
       - SERVER_PORT=5678
