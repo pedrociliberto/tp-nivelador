@@ -67,3 +67,13 @@ services:
       - SERVER_PORT=5678
       - INPUT_FILE=/input/input-4.csv
       - OUTPUT_FILE=/output/output-4.txt
+
+  client_5:
+    <<: *client-template
+    container_name: client_5
+    environment:
+      - AGENCY_ID=5
+      - SERVER_HOST=server
+      - SERVER_PORT=5678
+      - INPUT_FILE=/input/input-5.csv
+      - OUTPUT_FILE=/output/output-5.txt
