@@ -1,8 +1,10 @@
 package client
 
 import (
+	"bufio"
 	"net"
 	"time"
+	"os"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
@@ -88,5 +90,64 @@ func (client *Client) Run() error {
 	}
 	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
 
+	if err := sendAndReceiveBets(client.conn, client.config.AgencyId); err != nil {
+		logger.Error("send-and-receive-bets", logger.Fail, "agency-id", client.config.AgencyId, "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func sendAndReceiveBets(conn net.Conn, agencyId string) error {
+	const mainAction = "process-bets"
+	logger.Info(mainAction, logger.InProgress, "agency-id", agencyId)
+
+	inputPath := os.Getenv("INPUT_FILE")
+	outputPath := os.Getenv("OUTPUT_FILE")
+
+	inputFile, err := os.Open(inputPath)
+	if err != nil {
+		logger.Error("open-input-file", logger.Fail, "agency-id", agencyId, "err", err)
+		return err
+	}
+	defer inputFile.Close()
+
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		logger.Error("create-output-file", logger.Fail, "agency-id", agencyId, "err", err)
+		return err
+	}
+	defer outputFile.Close()
+
+	scanner := bufio.NewScanner(inputFile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if err := safe_socket.SendAll(conn, []byte(line)); err != nil {
+			logger.Error("send-bet", logger.Fail, "agency-id", agencyId, "line", line, "err", err)
+			return err
+		}
+
+		responseBuffer, err := safe_socket.RecvAll(conn, ECHO_CLIENT_BUFFER_SIZE)
+		if err != nil {
+			logger.Error("recv-response", logger.Fail, "agency-id", agencyId, "err", err)
+			return err
+		}
+
+		if _, err := outputFile.Write(responseBuffer); err != nil {
+			logger.Error("write-output-file", logger.Fail, "agency-id", agencyId, "err", err)
+			return err
+		}
+		if _, err := outputFile.Write([]byte("\n")); err != nil {
+			return err
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		logger.Error("scan-input-file", logger.Fail, "agency-id", agencyId, "err", err)
+		return err
+	}
+
+	logger.Info(mainAction, logger.Success, "agency-id", agencyId)
 	return nil
 }
