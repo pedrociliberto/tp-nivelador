@@ -1,7 +1,7 @@
 import socket
 import logger
 import safe_socket
-from src_frozen.lottery import Lottery, Bet
+from lottery import Lottery, Bet
 
 class Server:
     def __init__(self, server_host: str, server_port: int) -> None:
