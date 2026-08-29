@@ -1,7 +1,7 @@
 import socket
 import logger
 import protocol
-from formatting import parse_bet, format_winner
+import formatting
 from lottery import Lottery, Bet
 
 class Server:
@@ -31,14 +31,14 @@ class Server:
                     break
                 for line in bet_lines:
                     if line:
-                        client_bets.append(parse_bet(agency_id, line))
+                        client_bets.append(formatting.parse_bet(agency_id, line))
                         bets_amount += 1              
 
             if client_bets:
                 lottery.store_bets(client_bets)
             for stored_bet in lottery.load_bets():
                 if lottery.has_won(stored_bet):
-                    winner_line = format_winner(stored_bet)
+                    winner_line = formatting.format_winner(stored_bet)
                     protocol.send_string_message(client_socket, winner_line)
 
             protocol.send_header(client_socket, 0)
