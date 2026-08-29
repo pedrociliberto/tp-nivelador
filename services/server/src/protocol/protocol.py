@@ -33,3 +33,9 @@ def recv_string_message(sock: socket.socket) -> str | None:
     
     payload = safe_socket.recv_all(sock, msg_len)
     return payload.decode('utf-8')
+
+def recv_batch(sock: socket.socket) -> list[str] | None:
+    payload = recv_string_message(sock)
+    if not payload:
+        return None
+    return payload.split('\n')

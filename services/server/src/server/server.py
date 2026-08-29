@@ -26,12 +26,13 @@ class Server:
                 pass
 
             while True:
-                bet_line = protocol.recv_string_message(client_socket)
-                if not bet_line:
+                bet_lines = protocol.recv_batch(client_socket)
+                if not bet_lines:
                     break
-
-                client_bets.append(parse_bet(agency_id, bet_line))
-                bets_amount += 1              
+                for line in bet_lines:
+                    if line:
+                        client_bets.append(parse_bet(agency_id, line))
+                        bets_amount += 1              
 
             if client_bets:
                 lottery.store_bets(client_bets)
