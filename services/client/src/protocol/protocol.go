@@ -29,12 +29,13 @@ func SendHeader(rw io.Writer, value uint32) error {
 
 func SendStringMessage(rw io.Writer, msg string) error {
 	msgBytes := []byte(msg)
-	header := intToBytes(uint32(len(msgBytes)))
+	msgLen := uint32(len(msgBytes))
 
-	if err := safe_socket.SendAll(rw, header); err != nil {
-		return err
-	}
-	return safe_socket.SendAll(rw, msgBytes)
+	packet := make([]byte, 4+msgLen)
+	copy(packet[0:4], intToBytes(msgLen))
+	copy(packet[4:], msgBytes)
+
+	return safe_socket.SendAll(rw, packet)
 }
 
 func SendBatch(rw io.Writer, batch []string) error {
