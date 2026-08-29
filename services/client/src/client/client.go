@@ -75,6 +75,12 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 	inputPath := os.Getenv("INPUT_FILE")
 	outputPath := os.Getenv("OUTPUT_FILE")
 
+	batchSize, err := strconv.Atoi(os.Getenv("BATCH_SIZE"))
+	if err != nil {
+		logger.Error("parse-batch-size", logger.Fail, "agency-id", agencyId, "err", err)
+		return err
+	}
+
 	inputFile, err := os.Open(inputPath)
 	if err != nil {
 		logger.Error("open-input-file", logger.Fail, "agency-id", agencyId, "err", err)
@@ -99,15 +105,28 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 		return err
 	}
 
+	batch := make([]string, 0, batchSize)
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
-		if err := protocol.SendStringMessage(conn, scanner.Text()); err != nil {
-			return err
+		line := scanner.Text()
+		batch = append(batch, line)
+
+		if len(batch) == batchSize {
+			if err := protocol.SendBatch(conn, batch); err != nil {
+				return err
+			}
+			batch = batch[:0]
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		logger.Error("scan-input-file", logger.Fail, "agency-id", agencyId, "err", err)
 		return err
+	}
+
+	if len(batch) > 0 {
+		if err := protocol.SendBatch(conn, batch); err != nil {
+			return err
+		}
 	}
 
 	if err := protocol.SendHeader(conn, 0); err != nil {

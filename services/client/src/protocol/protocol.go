@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"io"
+	"strings"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
@@ -34,6 +35,14 @@ func SendStringMessage(rw io.Writer, msg string) error {
 		return err
 	}
 	return safe_socket.SendAll(rw, msgBytes)
+}
+
+func SendBatch(rw io.Writer, batch []string) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	payload := strings.Join(batch, "\n")
+	return SendStringMessage(rw, payload)
 }
 
 func RecvStringMessage(r io.Reader) (string, error) {
