@@ -2,11 +2,11 @@ package client
 
 import (
 	"bufio"
-	"net"
-	"time"
 	"io"
+	"net"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
@@ -99,7 +99,7 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 	if err := safe_socket.SendAll(conn, header); err != nil {
 		return err
 	}
-	
+
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -170,8 +170,8 @@ func intToBytes(n uint32) []byte {
 }
 
 func bytesToInt(b []byte) uint32 {
-	return (uint32(b[0]) << 24) | 
-	       (uint32(b[1]) << 16) | 
-	       (uint32(b[2]) << 8)  | 
-	       uint32(b[3])
+	return (uint32(b[0]) << 24) |
+		(uint32(b[1]) << 16) |
+		(uint32(b[2]) << 8) |
+		uint32(b[3])
 }
