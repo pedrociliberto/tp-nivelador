@@ -1,7 +1,7 @@
 import socket
 import logger
 import protocol
-import formatting
+from . import formatting
 from lottery import Lottery, Bet
 
 class Server:
