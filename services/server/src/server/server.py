@@ -37,7 +37,8 @@ class Server:
                 for line in bet_lines:
                     if line:
                         client_bets.append(formatting.parse_bet(agency_id, line))
-                        bets_amount += 1              
+                        bets_amount += 1          
+                protocol.send_ack(client_socket)
 
             if client_bets:
                 with self.lottery_lock:

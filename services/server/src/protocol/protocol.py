@@ -38,4 +38,7 @@ def recv_batch(sock: socket.socket) -> list[str] | None:
     payload = recv_string_message(sock)
     if not payload:
         return None
-    return payload.split('\n')
+    return [line for line in payload.split('\n') if line]
+
+def send_ack(sock: socket.socket):
+    send_header(sock, 1)

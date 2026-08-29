@@ -115,6 +115,9 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 			if err := protocol.SendBatch(conn, batch); err != nil {
 				return err
 			}
+			if err := protocol.RecvACK(conn); err != nil {
+				return err
+			}
 			batch = batch[:0]
 		}
 	}
@@ -125,6 +128,9 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 
 	if len(batch) > 0 {
 		if err := protocol.SendBatch(conn, batch); err != nil {
+			return err
+		}
+		if err := protocol.RecvACK(conn); err != nil {
 			return err
 		}
 	}

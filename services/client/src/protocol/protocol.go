@@ -63,3 +63,14 @@ func RecvStringMessage(r io.Reader) (string, error) {
 	}
 	return string(payload), nil
 }
+
+func RecvACK(r io.Reader) error {
+	header, err := safe_socket.RecvAll(r, 4)
+	if err != nil {
+		return err
+	}
+	if bytesToInt(header) != 1 {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
