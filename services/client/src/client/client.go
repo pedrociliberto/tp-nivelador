@@ -2,14 +2,13 @@ package client
 
 import (
 	"bufio"
-	"io"
 	"net"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
-	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/protocol"
 )
 
 const CONNECTION_ATTEMPTS_MAX = 3
@@ -95,83 +94,40 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 		logger.Error("parse-agency-id", logger.Fail, "agency-id", agencyId, "err", err)
 		return err
 	}
-	header := intToBytes(uint32(agencyNum))
-	if err := safe_socket.SendAll(conn, header); err != nil {
+
+	if err := protocol.SendHeader(conn, uint32(agencyNum)); err != nil {
 		return err
 	}
 
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
-		line := scanner.Text()
-		lineBytes := []byte(line)
-		length := len(lineBytes)
-		header := intToBytes(uint32(length))
-
-		if err := safe_socket.SendAll(conn, header); err != nil {
-			logger.Error("send-bet-header", logger.Fail, "agency-id", agencyId, "err", err)
-			return err
-		}
-		if err := safe_socket.SendAll(conn, lineBytes); err != nil {
-			logger.Error("send-bet-payload", logger.Fail, "agency-id", agencyId, "err", err)
+		if err := protocol.SendStringMessage(conn, scanner.Text()); err != nil {
 			return err
 		}
 	}
-
 	if err := scanner.Err(); err != nil {
 		logger.Error("scan-input-file", logger.Fail, "agency-id", agencyId, "err", err)
 		return err
 	}
 
-	endHeader := make([]byte, 4)
-	if err := safe_socket.SendAll(conn, endHeader); err != nil {
+	if err := protocol.SendHeader(conn, 0); err != nil {
 		return err
 	}
 
 	for {
-		header, err := safe_socket.RecvAll(conn, 4)
+		winnerLine, err := protocol.RecvStringMessage(conn)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			logger.Error("recv-winner-header", logger.Fail, "agency-id", agencyId, "err", err)
 			return err
 		}
-		msgLen := bytesToInt(header)
-		if msgLen == 0 {
+		if winnerLine == "" {
 			break
 		}
 
-		winnerBuffer, err := safe_socket.RecvAll(conn, int(msgLen))
-		if err != nil {
-			logger.Error("recv-winner-payload", logger.Fail, "agency-id", agencyId, "err", err)
-			return err
-		}
-
-		if _, err := outputFile.Write(winnerBuffer); err != nil {
-			logger.Error("write-output-file", logger.Fail, "agency-id", agencyId, "err", err)
-			return err
-		}
-		if _, err := outputFile.Write([]byte("\n")); err != nil {
+		if _, err := outputFile.WriteString(winnerLine + "\n"); err != nil {
 			return err
 		}
 	}
 
 	logger.Info(mainAction, logger.Success, "agency-id", agencyId)
 	return nil
-}
-
-func intToBytes(n uint32) []byte {
-	b := make([]byte, 4)
-	b[0] = byte(n >> 24)
-	b[1] = byte(n >> 16)
-	b[2] = byte(n >> 8)
-	b[3] = byte(n)
-	return b
-}
-
-func bytesToInt(b []byte) uint32 {
-	return (uint32(b[0]) << 24) |
-		(uint32(b[1]) << 16) |
-		(uint32(b[2]) << 8) |
-		uint32(b[3])
 }
