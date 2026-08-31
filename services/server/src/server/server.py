@@ -33,12 +33,12 @@ class Server:
         logger.info("signal-received", logger.LogResult.in_progress, f"Signal {signum} received")
         self.running = False
 
-        try:
+        try: # Forces BrokenBarrierError to free waiting threads
             self.quorum_barrier.abort()
         except Exception:
             pass
 
-        if self.server_socket:
+        if self.server_socket: # Closes main socket
             try:
                 self.server_socket.shutdown(socket.SHUT_RDWR)
             except Exception:
@@ -48,7 +48,7 @@ class Server:
             except Exception:
                 pass
 
-        with self.clients_lock:
+        with self.clients_lock: # Closes active threads sockets to free blocking batch recvs
             for client_socket in self.active_clients:
                 try:
                     client_socket.shutdown(socket.SHUT_RDWR)
@@ -72,7 +72,7 @@ class Server:
         action = "handle-client"
         client_bets = []
         bets_amount = 0
-        self._register_client_socket(client_socket)
+        self._register_client_socket(client_socket) # Trace socket in case of SIGTERM
         try:
             logger.info(action, logger.LogResult.in_progress)
 
@@ -114,7 +114,7 @@ class Server:
                     if stored_bet.agency_id == agency_id and self.lottery.has_won(stored_bet):
                         winner_line = formatting.format_winner(stored_bet)
                         protocol.send_string_message(client_socket, winner_line)
-            finally:
+            finally: # This block ensures file closure
                 bets_generator.close()
 
             if self.running:
@@ -137,7 +137,7 @@ class Server:
     def run(self):
         action = "accept-connection"
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Re-use port on rapid restart
 
         try: 
             self.server_socket.bind((self.server_host, self.server_port))
@@ -156,6 +156,7 @@ class Server:
                     client_thread.start()
                     self.active_threads.append(client_thread)
                 except (OSError, socket.error):
+                    # When socket is closed from _handle_signal
                     break
         finally:
             self.running = False
