@@ -8,6 +8,8 @@ from . import formatting
 from lottery import Lottery, Bet
 
 class Server:
+    SHUTDOWN_THREAD_TIMEOUT_SEC = 1.0
+
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
         self.server_port = server_port
@@ -167,5 +169,5 @@ class Server:
                     pass
             for t in self.active_threads:
                 if t.is_alive():
-                    t.join(timeout=1.0)
+                    t.join(timeout=self.SHUTDOWN_THREAD_TIMEOUT_SEC)
             logger.info("server-shutdown", logger.LogResult.success)
