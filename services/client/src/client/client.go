@@ -62,7 +62,7 @@ func (client *Client) Run(ctx context.Context) error {
 	defer client.conn.Close()
 
 	if err := sendAndReceiveBets(ctx, client.conn, client.config.AgencyId); err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil { // Returns signal error immediately
 			return ctx.Err()
 		}
 		logger.Error("send-and-receive-bets", logger.Fail, "agency-id", client.config.AgencyId, "err", err)
@@ -119,7 +119,7 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 	batch := make([]string, 0, batchSize)
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
-		select {
+		select { // Cancels execution when signal is received
 		case <-ctx.Done():
 			return ctx.Err()
 		default:

@@ -35,6 +35,7 @@ func loadConfig() (client.ClientConfig, error) {
 }
 
 func run() int {
+	// Creates context that is cancelled when signal is received
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
@@ -51,13 +52,13 @@ func run() int {
 	}
 
 	go func() {
-		<-ctx.Done()
+		<-ctx.Done() // Blocks here until shutdown signal is received
 		logger.Info("signal-received", logger.InProgress, "msg", "Graceful shutdown initiated")
 		client.Close()
 	}()
 
 	if err := client.Run(ctx); err != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
+		if errors.Is(ctx.Err(), context.Canceled) { // Context explicitly cancelled by SIGTERM: graceful
 			logger.Info("client-shutdown", logger.Success)
 			return 0
 		}
