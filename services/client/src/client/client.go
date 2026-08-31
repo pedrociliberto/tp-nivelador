@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"context"
 	"net"
 	"os"
 	"strconv"
@@ -57,10 +58,13 @@ func connectToServer(host, port string) (net.Conn, error) {
 	return conn, err
 }
 
-func (client *Client) Run() error {
+func (client *Client) Run(ctx context.Context) error {
 	defer client.conn.Close()
 
-	if err := sendAndReceiveBets(client.conn, client.config.AgencyId); err != nil {
+	if err := sendAndReceiveBets(ctx, client.conn, client.config.AgencyId); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		logger.Error("send-and-receive-bets", logger.Fail, "agency-id", client.config.AgencyId, "err", err)
 		return err
 	}
@@ -68,7 +72,14 @@ func (client *Client) Run() error {
 	return nil
 }
 
-func sendAndReceiveBets(conn net.Conn, agencyId string) error {
+func (c *Client) Close() error {
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
+}
+
+func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) error {
 	const mainAction = "process-bets"
 	logger.Info(mainAction, logger.InProgress, "agency-id", agencyId)
 
@@ -108,6 +119,12 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 	batch := make([]string, 0, batchSize)
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		line := scanner.Text()
 		batch = append(batch, line)
 
@@ -140,6 +157,12 @@ func sendAndReceiveBets(conn net.Conn, agencyId string) error {
 	}
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		winnerLine, err := protocol.RecvStringMessage(conn)
 		if err != nil {
 			return err
