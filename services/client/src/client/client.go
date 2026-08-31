@@ -12,8 +12,12 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/protocol"
 )
 
-const CONNECTION_ATTEMPTS_MAX = 3
-const CONNECTION_ATTEMPS_DELAY_MS = 200
+const (
+	CONNECTION_ATTEMPTS_MAX     = 3
+	CONNECTION_ATTEMPS_DELAY_MS = 200
+	END_OF_BETS_HEADER_ID       = 0
+	END_OF_WINNERS_DELIMITER    = ""
+)
 
 type ClientConfig struct {
 	ServerHost string
@@ -152,7 +156,7 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 		}
 	}
 
-	if err := protocol.SendHeader(conn, 0); err != nil {
+	if err := protocol.SendHeader(conn, END_OF_BETS_HEADER_ID); err != nil {
 		return err
 	}
 
@@ -167,7 +171,7 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 		if err != nil {
 			return err
 		}
-		if winnerLine == "" {
+		if winnerLine == END_OF_WINNERS_DELIMITER {
 			break
 		}
 

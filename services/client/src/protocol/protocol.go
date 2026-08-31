@@ -7,19 +7,28 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
+const (
+	ACK_SUCCESS_VALUE = 1
+	HEADER_SIZE_BYTES = 4
+
+	SHIFT_BYTE_3 = 24
+	SHIFT_BYTE_2 = 16
+	SHIFT_BYTE_1 = 8
+)
+
 func intToBytes(n uint32) []byte {
 	return []byte{
-		byte(n >> 24),
-		byte(n >> 16),
-		byte(n >> 8),
+		byte(n >> SHIFT_BYTE_3),
+		byte(n >> SHIFT_BYTE_2),
+		byte(n >> SHIFT_BYTE_1),
 		byte(n),
 	}
 }
 
 func bytesToInt(b []byte) uint32 {
-	return (uint32(b[0]) << 24) |
-		(uint32(b[1]) << 16) |
-		(uint32(b[2]) << 8) |
+	return (uint32(b[0]) << SHIFT_BYTE_3) |
+		(uint32(b[1]) << SHIFT_BYTE_2) |
+		(uint32(b[2]) << SHIFT_BYTE_1) |
 		uint32(b[3])
 }
 
@@ -31,9 +40,9 @@ func SendStringMessage(rw io.Writer, msg string) error {
 	msgBytes := []byte(msg)
 	msgLen := uint32(len(msgBytes))
 
-	packet := make([]byte, 4+msgLen)
-	copy(packet[0:4], intToBytes(msgLen))
-	copy(packet[4:], msgBytes)
+	packet := make([]byte, HEADER_SIZE_BYTES+msgLen)
+	copy(packet[0:HEADER_SIZE_BYTES], intToBytes(msgLen))
+	copy(packet[HEADER_SIZE_BYTES:], msgBytes)
 
 	return safe_socket.SendAll(rw, packet)
 }
@@ -47,7 +56,7 @@ func SendBatch(rw io.Writer, batch []string) error {
 }
 
 func RecvStringMessage(r io.Reader) (string, error) {
-	header, err := safe_socket.RecvAll(r, 4)
+	header, err := safe_socket.RecvAll(r, HEADER_SIZE_BYTES)
 	if err != nil {
 		return "", err
 	}
@@ -65,11 +74,11 @@ func RecvStringMessage(r io.Reader) (string, error) {
 }
 
 func RecvACK(r io.Reader) error {
-	header, err := safe_socket.RecvAll(r, 4)
+	header, err := safe_socket.RecvAll(r, HEADER_SIZE_BYTES)
 	if err != nil {
 		return err
 	}
-	if bytesToInt(header) != 1 {
+	if bytesToInt(header) != ACK_SUCCESS_VALUE {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
