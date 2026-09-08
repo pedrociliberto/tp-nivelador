@@ -76,6 +76,7 @@ class Server:
                     client_socket.close()
                 except Exception:
                     pass
+            self.active_clients.clear() # Clears the list of active clients after closing their sockets
 
     def _register_client_socket(self, sock):
         """
@@ -98,6 +99,14 @@ class Server:
             if sock in self.active_clients:
                 self.active_clients.remove(sock)
 
+    def _clean_dead_threads(self):
+        """
+        Cleans up the list of active threads by removing any threads that have completed their execution.
+        This helps to prevent memory leaks and keeps the list of active threads accurate.
+        """
+        with self.clients_lock:
+            self.active_threads = [t for t in self.active_threads if t.is_alive()]
+
     def _handle_client(self, client_socket):
         """
         Handles the communication with a connected client.
@@ -116,7 +125,7 @@ class Server:
             if agency_id is None:
                 return
 
-            while True:
+            while self.running:
                 bet_lines = protocol.recv_batch(client_socket)
                 if not bet_lines:
                     break
@@ -125,6 +134,9 @@ class Server:
                         client_bets.append(formatting.parse_bet(agency_id, line))
                         bets_amount += 1          
                 protocol.send_ack(client_socket)
+
+            if not self.running:
+                return
 
             if client_bets:
                 with self.lottery_lock:
@@ -142,8 +154,9 @@ class Server:
 
             logger.info(self.LOG_QUORUM_WAIT, logger.LogResult.success, "agency-id", agency_id)
 
-            bets_generator = self.lottery.load_bets()
+            bets_generator = None
             try:
+                bets_generator = self.lottery.load_bets()
                 for stored_bet in bets_generator:
                     if not self.running:
                         break
@@ -151,7 +164,8 @@ class Server:
                         winner_line = formatting.format_winner(stored_bet)
                         protocol.send_string_message(client_socket, winner_line)
             finally: # This block ensures file closure
-                bets_generator.close()
+                if bets_generator and hasattr(bets_generator, "close"):
+                    bets_generator.close()
 
             if self.running:
                 protocol.send_header(client_socket, self.END_WINNER_LIST_HEADER)
@@ -169,7 +183,6 @@ class Server:
                 client_socket.close()
             except Exception:
                 pass
-            logger.info(self.LOG_HANDLE_CLIENT, logger.LogResult.in_progress, "Client disconnected")
 
     def run(self):
         """
@@ -177,7 +190,7 @@ class Server:
         The server will continue to run until a termination signal is received.
         """
         action = self.LOG_ACCEPT_CONNECTION
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # Create a TCP socket
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Re-use port on rapid restart
 
         try: 
@@ -189,13 +202,14 @@ class Server:
                     logger.info(action, logger.LogResult.in_progress)
                     client_socket, _ = self.server_socket.accept()
                     logger.info(action, logger.LogResult.success)
-
+                    self._clean_dead_threads()
                     client_thread = threading.Thread(
                         target=self._handle_client,
                         args=(client_socket,)
                     )
                     client_thread.start()
-                    self.active_threads.append(client_thread)
+                    with self.clients_lock:
+                        self.active_threads.append(client_thread)
                 except (OSError, socket.error):
                     # When socket is closed from _handle_signal
                     break
@@ -206,7 +220,9 @@ class Server:
                     self.server_socket.close()
                 except Exception:
                     pass
-            for t in self.active_threads:
+            with self.clients_lock:
+                threads = list(self.active_threads)
+            for t in threads:
                 if t.is_alive():
                     t.join(timeout=self.SHUTDOWN_THREAD_TIMEOUT_SEC)
             logger.info(self.LOG_SERVER_SHUTDOWN, logger.LogResult.success)
