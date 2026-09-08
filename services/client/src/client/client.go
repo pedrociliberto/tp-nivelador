@@ -117,6 +117,19 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 	}
 	defer outputFile.Close()
 
+	if err := sendBetsFromFile(ctx, conn, inputFile, agencyId, batchSize); err != nil {
+		return err
+	}
+
+	if err := receiveWinners(ctx, conn, outputFile); err != nil {
+		return err
+	}
+
+	logger.Info(mainAction, logger.Success, ARG_AGENCY_ID, agencyId)
+	return nil
+}
+
+func sendBetsFromFile(ctx context.Context, conn net.Conn, inputFile *os.File, agencyId string, batchSize int) error {
 	agencyNum, err := strconv.Atoi(agencyId)
 	if err != nil {
 		logger.Error(LOG_PARSE_AGENCY_ID, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
@@ -134,8 +147,7 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 			return ctx.Err()
 		}
 
-		line := scanner.Text()
-		batch = append(batch, line)
+		batch = append(batch, scanner.Text())
 
 		if len(batch) == batchSize {
 			if err := protocol.SendBatch(conn, batch); err != nil {
@@ -161,10 +173,10 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 		}
 	}
 
-	if err := protocol.SendHeader(conn, END_OF_BETS_HEADER_ID); err != nil {
-		return err
-	}
+	return protocol.SendHeader(conn, END_OF_BETS_HEADER_ID)
+}
 
+func receiveWinners(ctx context.Context, conn net.Conn, outputFile *os.File) error {
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -187,7 +199,5 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 			return fmt.Errorf("short write to output file: %d of %d bytes", n, len(data))
 		}
 	}
-
-	logger.Info(mainAction, logger.Success, ARG_AGENCY_ID, agencyId)
 	return nil
 }
