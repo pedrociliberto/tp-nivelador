@@ -13,13 +13,6 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/protocol"
 )
 
-const (
-	CONNECTION_ATTEMPTS_MAX     = 3
-	CONNECTION_ATTEMPS_DELAY_MS = 200
-	END_OF_BETS_HEADER_ID       = 0
-	END_OF_WINNERS_DELIMITER    = ""
-)
-
 type ClientConfig struct {
 	ServerHost string
 	ServerPort string
@@ -34,7 +27,7 @@ type Client struct {
 func NewClient(config ClientConfig) (*Client, error) {
 	conn, err := connectToServer(config.ServerHost, config.ServerPort)
 	if err != nil {
-		logger.Warn("connect-to-server", logger.Fail)
+		logger.Warn(LOG_CONNECT_TO_SERVER, logger.Fail)
 		return nil, err
 	}
 
@@ -43,7 +36,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 }
 
 func connectToServer(host, port string) (net.Conn, error) {
-	const action = "connect-to-server"
+	const action = LOG_CONNECT_TO_SERVER
 	var err error
 	var conn net.Conn
 
@@ -81,7 +74,7 @@ func (client *Client) Run(ctx context.Context) error {
 		if ctx.Err() != nil { // Returns signal error immediately
 			return ctx.Err()
 		}
-		logger.Error("send-and-receive-bets", logger.Fail, "agency-id", client.config.AgencyId, "err", err)
+		logger.Error(LOG_SEND_AND_RECEIVE_BETS, logger.Fail, ARG_AGENCY_ID, client.config.AgencyId, "err", err)
 		return err
 	}
 
@@ -98,35 +91,35 @@ func (c *Client) Close() error {
 }
 
 func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) error {
-	const mainAction = "process-bets"
-	logger.Info(mainAction, logger.InProgress, "agency-id", agencyId)
+	const mainAction = LOG_PROCESS_BETS
+	logger.Info(mainAction, logger.InProgress, ARG_AGENCY_ID, agencyId)
 
 	inputPath := os.Getenv("INPUT_FILE")
 	outputPath := os.Getenv("OUTPUT_FILE")
 
 	batchSize, err := strconv.Atoi(os.Getenv("BATCH_SIZE"))
 	if err != nil {
-		logger.Error("parse-batch-size", logger.Fail, "agency-id", agencyId, "err", err)
+		logger.Error(LOG_PARSE_BATCH_SIZE, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
 		return err
 	}
 
 	inputFile, err := os.Open(inputPath)
 	if err != nil {
-		logger.Error("open-input-file", logger.Fail, "agency-id", agencyId, "err", err)
+		logger.Error(LOG_OPEN_INPUT_FILE, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
 		return err
 	}
 	defer inputFile.Close()
 
 	outputFile, err := os.Create(outputPath)
 	if err != nil {
-		logger.Error("create-output-file", logger.Fail, "agency-id", agencyId, "err", err)
+		logger.Error(LOG_CREATE_OUTPUT_FILE, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
 		return err
 	}
 	defer outputFile.Close()
 
 	agencyNum, err := strconv.Atoi(agencyId)
 	if err != nil {
-		logger.Error("parse-agency-id", logger.Fail, "agency-id", agencyId, "err", err)
+		logger.Error(LOG_PARSE_AGENCY_ID, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
 		return err
 	}
 
@@ -155,7 +148,7 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		logger.Error("scan-input-file", logger.Fail, "agency-id", agencyId, "err", err)
+		logger.Error(LOG_SCAN_INPUT_FILE, logger.Fail, ARG_AGENCY_ID, agencyId, "err", err)
 		return err
 	}
 
@@ -195,6 +188,6 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 		}
 	}
 
-	logger.Info(mainAction, logger.Success, "agency-id", agencyId)
+	logger.Info(mainAction, logger.Success, ARG_AGENCY_ID, agencyId)
 	return nil
 }
