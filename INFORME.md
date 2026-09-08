@@ -2,6 +2,12 @@
 
 A continuación explico la **arquitectura general** y la estructura del código que implementé para el TP0 de Sistemas Distribuidos. Menciono cómo se organiza el proyecto, el **protocolo de comunicación** entre cliente y servidor, los mecanismos de **concurrencia y sincronización** utilizados, así como las estrategias implementadas para un manejo eficiente de memoria y un *Graceful Shutdown*.
 
+## Cómo levantar el sistema
+
+Para ejecutar el sistema completo, se utiliza el `Makefile` del proyecto, el cual abstrae la gestión de la infraestructura definida en Docker Compose. Al ejecutar el comando `make up`, se prepara el entorno local creando el directorio de salida `./output`, limpiando cualquier archivo previo y compilando las imágenes Docker del servidor y de los seis clientes (agencias 0 a 5). Posteriormente, levanta los contenedores en segundo plano (`--detach`) eliminando contenedores huérfanos anteriores. El servidor expone el puerto `5678`, y para mi ejecución personal, impone un quórum mínimo de seis agencias (`AGENCY_QUORUM_MIN=6`) para poder testear manualmente el funcionamiento de los ganadores de apuestas. Cada cliente se conecta de forma individual montando en modo lectura el directorio `./input` para procesar sus respectivas apuestas (`input-X.csv`) con un tamaño de lote configurable (`BATCH_SIZE=16`) y guardar los resultados generados en el volumen `./output`.
+
+Para observar el progreso del envío de apuestas, sincronización de quórum y cierre *graceful*, se utiliza el comando `make logs`, el cual transmite la salida de todos los servicios mediante `docker compose logs --follow`. Una vez finalizado el procesamiento o si se requiere detener la ejecución de manera controlada, el comando `make down` envía un `SIGTERM` con un tiempo de gracia de 5 segundos (`-t 5`) para asegurar que tanto el servidor como los clientes liberen sockets y cierren descriptores de archivos adecuadamente antes de remover los contenedores. Adicionalmente, las pruebas se ejecutan con `make test`, la cual limpia los registros de pruebas anteriores y ejecuta el script de validación en Python (`tests/run.py`).
+
 ## **1. Arquitectura General y Estructura del Código**
 
 La estructura del proyecto se organiza de la siguiente manera:
