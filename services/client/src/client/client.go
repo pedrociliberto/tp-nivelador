@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -65,6 +66,17 @@ func connectToServer(host, port string) (net.Conn, error) {
 func (client *Client) Run(ctx context.Context) error {
 	defer client.conn.Close()
 
+	stopCtxMonitor := make(chan struct{}) // Channel to signal the goroutine to stop monitoring the context
+	defer close(stopCtxMonitor)
+	go func() {
+		select {
+		case <-ctx.Done(): // Close connection when signal is received
+			client.conn.Close()
+		case <-stopCtxMonitor: // defer is executed when Run() returns, so the context monitor goroutine is stopped
+			return
+		}
+	}()
+
 	if err := sendAndReceiveBets(ctx, client.conn, client.config.AgencyId); err != nil {
 		if ctx.Err() != nil { // Returns signal error immediately
 			return ctx.Err()
@@ -78,7 +90,9 @@ func (client *Client) Run(ctx context.Context) error {
 
 func (c *Client) Close() error {
 	if c.conn != nil {
-		return c.conn.Close()
+		err := c.conn.Close()
+		c.conn = nil
+		return err
 	}
 	return nil
 }
@@ -123,10 +137,8 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 	batch := make([]string, 0, batchSize)
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
-		select { // Cancels execution when signal is received
-		case <-ctx.Done():
+		if ctx.Err() != nil { // Cancels execution when signal is received
 			return ctx.Err()
-		default:
 		}
 
 		line := scanner.Text()
@@ -161,10 +173,8 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
 
 		winnerLine, err := protocol.RecvStringMessage(conn)
@@ -175,8 +185,13 @@ func sendAndReceiveBets(ctx context.Context, conn net.Conn, agencyId string) err
 			break
 		}
 
-		if _, err := outputFile.WriteString(winnerLine + "\n"); err != nil {
+		data := winnerLine + "\n"
+		n, err := outputFile.WriteString(data)
+		if err != nil {
 			return err
+		}
+		if n < len(data) {
+			return fmt.Errorf("short write to output file: %d of %d bytes", n, len(data))
 		}
 	}
 
