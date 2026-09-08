@@ -9,6 +9,16 @@ from lottery import Lottery, Bet
 
 class Server:
     SHUTDOWN_THREAD_TIMEOUT_SEC = 1.0
+    END_WINNER_LIST_HEADER = 0
+    BETS_STORAGE_PATH = "server_bets.csv"
+
+    ARG_AGENCY_ID = "agency-id"
+    ARG_MESSAGES_AMOUNT = "messages-amount"
+    LOG_SIGNAL_RECEIVED = "signal-received"
+    LOG_HANDLE_CLIENT = "handle-client"
+    LOG_QUORUM_WAIT = "quorum-wait"
+    LOG_ACCEPT_CONNECTION = "accept-connection"
+    LOG_SERVER_SHUTDOWN = "server-shutdown"
 
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
@@ -21,7 +31,7 @@ class Server:
 
         self.quorum_min = int(os.getenv("AGENCY_QUORUM_MIN"))
         self.quorum_barrier = threading.Barrier(self.quorum_min)
-        self.storage_path = "server_bets.csv"
+        self.storage_path = self.BETS_STORAGE_PATH
         self.lottery = Lottery(self.storage_path)
         self.lottery_lock = threading.Lock()
 
@@ -31,8 +41,14 @@ class Server:
         with open(self.storage_path, "w"):
             pass
 
-    def _handle_signal(self, signum, frame):
-        logger.info("signal-received", logger.LogResult.in_progress, f"Signal {signum} received")
+    def _handle_signal(self, signum, frame=None):
+        """
+        Handles termination signals (`SIGTERM`, `SIGINT`) to gracefully shut down the server.
+        Args:
+            signum (int): The signal number received.
+            frame: The current stack frame.
+        """
+        logger.info(self.LOG_SIGNAL_RECEIVED, logger.LogResult.in_progress, f"Signal {signum} received")
         self.running = False
 
         try: # Forces BrokenBarrierError to free waiting threads
@@ -62,16 +78,34 @@ class Server:
                     pass
 
     def _register_client_socket(self, sock):
+        """
+        Registers a client socket for tracking. 
+        This is useful for ensuring that all active client sockets can be closed during a shutdown.
+        Args:
+            sock (socket): The client socket to register.
+        """
         with self.clients_lock:
             self.active_clients.append(sock)
 
     def _unregister_client_socket(self, sock):
+        """
+        Unregisters a client socket from tracking.
+        This is useful for ensuring that closed client sockets are no longer tracked when they are closed.
+        Args:
+            sock (socket): The client socket to unregister.
+        """
         with self.clients_lock:
             if sock in self.active_clients:
                 self.active_clients.remove(sock)
 
     def _handle_client(self, client_socket):
-        action = "handle-client"
+        """
+        Handles the communication with a connected client.
+        It processes bets sent by the client, stores them, and sends back any winning bets.
+        Args:
+            client_socket (socket): The socket connected to the client.
+        """
+        action = self.LOG_HANDLE_CLIENT
         client_bets = []
         bets_amount = 0
         self._register_client_socket(client_socket) # Trace socket in case of SIGTERM
@@ -96,7 +130,7 @@ class Server:
                 with self.lottery_lock:
                     self.lottery.store_bets(client_bets)
 
-            logger.info("quorum-wait", logger.LogResult.in_progress, "agency-id", agency_id)
+            logger.info(self.LOG_QUORUM_WAIT, logger.LogResult.in_progress, "agency-id", agency_id)
 
             if not self.running:
                 return
@@ -106,7 +140,7 @@ class Server:
             except threading.BrokenBarrierError:
                 return
 
-            logger.info("quorum-wait", logger.LogResult.success, "agency-id", agency_id)
+            logger.info(self.LOG_QUORUM_WAIT, logger.LogResult.success, "agency-id", agency_id)
 
             bets_generator = self.lottery.load_bets()
             try:
@@ -120,7 +154,7 @@ class Server:
                 bets_generator.close()
 
             if self.running:
-                protocol.send_header(client_socket, 0)
+                protocol.send_header(client_socket, self.END_WINNER_LIST_HEADER)
                 logger.info(action, logger.LogResult.success, "messages-amount", bets_amount)
 
         except Exception as e:
@@ -135,9 +169,14 @@ class Server:
                 client_socket.close()
             except Exception:
                 pass
+            logger.info(self.LOG_HANDLE_CLIENT, logger.LogResult.in_progress, "Client disconnected")
 
     def run(self):
-        action = "accept-connection"
+        """
+        Starts the server, listens for incoming connections, and handles each client in a separate thread.
+        The server will continue to run until a termination signal is received.
+        """
+        action = self.LOG_ACCEPT_CONNECTION
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Re-use port on rapid restart
 
@@ -170,4 +209,4 @@ class Server:
             for t in self.active_threads:
                 if t.is_alive():
                     t.join(timeout=self.SHUTDOWN_THREAD_TIMEOUT_SEC)
-            logger.info("server-shutdown", logger.LogResult.success)
+            logger.info(self.LOG_SERVER_SHUTDOWN, logger.LogResult.success)
