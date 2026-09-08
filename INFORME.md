@@ -49,7 +49,7 @@ Para el protocolo utilicé un **esquema LV (Length-Value)** utilizando represent
 2. **Envío de Lotes de Apuestas (*Batches*)**:
    - El cliente lee y agrupa las apuestas del archivo *.csv* en memoria hasta alcanzar el límite configurado por `BATCH_SIZE`.
    - Transmite un *Header* con la longitud exacta en bytes del *batch* generado, seguido de su `Payload`.
-   - El servidor procesa lo, almacenándolo de forma segura y responde con un **ACK** (header binario de 4 bytes con valor `1`).
+   - El servidor procesa el *batch* recibido, almacenándolo de forma segura y responde con un **ACK** (header binario de 4 bytes con valor `1`).
 
 3. **Fin de Transmisión de Apuestas**:
    - Al finalizar la lectura del archivo de entrada, el cliente transmite un *Header* especial con valor `0` (`END_OF_BETS_HEADER_ID`) para informarle al servidor que finalizó el envío de apuestas. De esta manera, el servidor puede evaluar si se alcanzó el **quórum mínimo de agencias** para proceder con la selección de ganadores.
