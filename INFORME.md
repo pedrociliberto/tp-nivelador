@@ -1,6 +1,6 @@
 # Pedro Ciliberto - Informe de Solución: TP0 - Sistemas Distribuidos
 
-A continuación explico la arquitectura general y la estructura del código que implementé para el TP0 de Sistemas Distribuidos.
+A continuación explico la **arquitectura general** y la estructura del código que implementé para el TP0 de Sistemas Distribuidos. Menciono cómo se organiza el proyecto, el **protocolo de comunicación** entre cliente y servidor, los mecanismos de **concurrencia y sincronización** utilizados, así como las estrategias implementadas para un manejo eficiente de memoria y un *Graceful Shutdown*.
 
 ## **1. Arquitectura General y Estructura del Código**
 
@@ -12,17 +12,18 @@ La estructura del proyecto se organiza de la siguiente manera:
 
 - **Servidor (`src/server/`)**:
   - `server.py`: implementa el servidor TCP multihilo. Gestiona el ciclo de vida de los hilos de atención a clientes (`threading.Thread`), la barrera de sincronización para el quórum de agencias listas (`threading.Barrier`), el almacenamiento *thread-safe* de apuestas y la notificación a ganadores.
+  - `formatting.py`: contiene funciones auxiliares para el formateo de apuestas y ganadores.
   - `main.py`: punto de entrada del servidor. Instancia y ejecuta la clase `Server`.
 
 - **Protocolo de Comunicación (`src/protocol/` en Go y `protocol.py` en Python)**:
   - Módulo encargado de la **encapsulación, serialización y deserialización** de mensajes entre Go y Python.
 
-- **Sockets Seguros (`src/safe_socket/` en Go y `safe_socket.py` en Python)**:
+- **Safe Sockets (`src/safe_socket/` en Go y `safe_socket.py` en Python)**:
   - Abstracción sobre los sockets TCP para garantizar el envío y recepción completa de buffers de datos (`SendAll` / `RecvAll`), previniendo *short-reads* y *short-writes*.
 
 ## **2. Protocolo de Comunicación**
 
-Para el protocolo utilicé un esquema LV (Length-Value) utilizando representación binaria en Big-Endian (Network Byte Order) para los encabezados.
+Para el protocolo utilicé un **esquema LV (Length-Value)** utilizando representación binaria en Big-Endian (Network Byte Order) para los encabezados.
 
 ### **2.1. Estructura de Mensajes**
 
@@ -32,7 +33,7 @@ Para el protocolo utilicé un esquema LV (Length-Value) utilizando representaci�
 
 2. **Contenido (`Payload`)**:
    - **Tamaño**: Variable, definido por el valor del Header.
-   - **Función**: Cadena de texto codificada en `UTF-8` conteniendo una o más apuestas en formato CSV delimitadas por salto de línea (`\n`).
+   - **Función**: Cadena de texto conteniendo una o más apuestas en formato CSV delimitadas por salto de línea (`\n`).
 
 ### **2.2. Flujo de Transmisión**
 
@@ -40,9 +41,9 @@ Para el protocolo utilicé un esquema LV (Length-Value) utilizando representaci�
    - El cliente inicia la conexión enviando un *Header* de 4 bytes que transporta su `agency_id` numérico.
 
 2. **Envío de Lotes de Apuestas (*Batches*)**:
-   - El cliente lee y agrupa las apuestas del archivo CSV en memoria hasta alcanzar el límite configurado por `BATCH_SIZE`.
+   - El cliente lee y agrupa las apuestas del archivo *.csv* en memoria hasta alcanzar el límite configurado por `BATCH_SIZE`.
    - Transmite un *Header* con la longitud exacta en bytes del *batch* generado, seguido de su `Payload`.
-   - El servidor procesa lo, almacenándolo de forma segura y responde con un **ACK** (encabezado binario de 4 bytes con valor `1`).
+   - El servidor procesa lo, almacenándolo de forma segura y responde con un **ACK** (header binario de 4 bytes con valor `1`).
 
 3. **Fin de Transmisión de Apuestas**:
    - Al finalizar la lectura del archivo de entrada, el cliente transmite un *Header* especial con valor `0` (`END_OF_BETS_HEADER_ID`) para informarle al servidor que finalizó el envío de apuestas. De esta manera, el servidor puede evaluar si se alcanzó el **quórum mínimo de agencias** para proceder con la selección de ganadores.
@@ -72,18 +73,21 @@ Para el protocolo utilicé un esquema LV (Length-Value) utilizando representaci�
 ### **4.1. Optimización del Uso de Memoria en el Cliente (Go)**
 
 - Se hace uso de `bufio.Scanner` sobre el archivo de apuestas para procesar las líneas por demanda y una por una, evitando cargar archivos pesados en memoria.
-- El slice utilizado para armar el lote (`make([]string, 0, batchSize)`) se limpia mediante *reslicing* (`batch = batch[:0]`) tras cada envío exitoso, reutilizando la capacidad reservada subyacente.
+- El slice utilizado para armar el lote (`make([]string, 0, batchSize)`) se limpia mediante *reslicing* (`batch = batch[:0]`) tras cada envío exitoso, reutilizando la capacidad reservada anteriormente.
 
-### **4.2. Apagado Controlado (*Graceful Shutdown*)**
+### **4.2. *Graceful Shutdown***
 
-Tanto el cliente como el servidor implementan la captura explícita de señales del sistema operativo (`SIGTERM` / `SIGINT`):
+Tanto el cliente como el servidor implementan un mecanismo robusto de captura de señales del sistema operativo (`SIGTERM` / `SIGINT`) para garantizar una interrupción limpia, evitar la pérdida de datos y prevenir la existencia de recursos huérfanos o procesos colgados.
 
 - **Cliente (Go)**:
-  - Escucha la cancelación del contexto (`signal.NotifyContext`) dentro de los bucles de envío y lectura.
-  - Ante una señal de interrupción, cancela la ejecución inmediatamente, interrumpe bloqueos y ejecuta los bloques `defer` para cerrar sockets y descriptores de archivos de forma limpia.
+  - En el punto de entrada (`main.go`) se utiliza `signal.NotifyContext` sobre el contexto. Ante una señal del sistema, el contexto va a propagar su cancelación a todas las subrutinas activas.
+  - Debido a que llamadas como `conn.Read()` o `conn.Write()` son bloqueantes, solo un chequeo de `ctx.Err()` en un bucle es insuficiente si la goroutine está esperando respuesta de red. Para solucionar esto, se implementa un monitor de contexto que invoca `client.conn.Close()` inmediatamente al activarse la señal. Esto fuerza la destrucción del *FD*, destrabando las lecturas/escrituras pendientes (`net.ErrClosed`). Si llega un SIGTERM, `ctx.Done()` se activa, el monitor cierra la conexión y la goroutine principal puede salir de su bucle de envío/recepción de forma ordenada. En caso de que el cliente haya terminado con éxito o con un error normal, la función `Run()` llega al final y se ejecuta `defer close(ctxStopMonitor)`, lo que detiene el monitor de contexto y evita la goroutine quede activa.
+  - En cada iteración de los bucles de envío de apuestas y recepción de ganadores, se verifica `if ctx.Err() != nil`. Si la señal fue recibida, la función interrumpe la ejecución de forma ordenada y retorna `ctx.Err()`.
+  - Con las sentencias `defer`, se asegura el cierre de los *FDs* de entrada/salida (`inputFile.Close()`, `outputFile.Close()`) y del socket TCP (`conn.Close()`), garantizando que no queden handles abiertos en el sistema.
 
 - **Servidor (Python)**:
-  - La función `_handle_signal` actualiza `running` a `False`.
-  - Destraba la barrera de sincronización invocando `quorum_barrier.abort()` para **liberar los hilos de agencias** que hayan quedado bloqueados esperando el quórum.
-  - Aplica `shutdown` y `close` sobre el socket principal de escucha y todos los sockets de clientes activos para **desbloquear operaciones** `accept` o `recv` pendientes.
-  - Realiza un `join` acotado por un ***timeout* constante** (`SHUTDOWN_THREAD_TIMEOUT_SEC`) sobre cada hilo secundario para garantizar que el tiempo de cierre sea conocido y acotado antes de finalizar el proceso principal.
+  - La función `_handle_signal(signum, frame)` registra las señales del sistema. Al activarse, actualiza `running = False` para impedir que el servidor acepte nuevas conexiones o siga procesando batches de apuestas.
+  - Se aplica `shutdown(socket.SHUT_RDWR)` y `close()` sobre `server_socket`. Esto destraba inmediatamente el bloqueo en la llamada `server_socket.accept()` del hilo principal, permitiéndole salir de forma limpia de su bucle.
+  - Los hilos de agencias procesando clientes pueden encontrarse suspendidos esperando a otras agencias en `quorum_barrier.wait()`. El manejador invoca explícitamente `quorum_barrier.abort()`, forzando una excepción `threading.BrokenBarrierError` en todos los hilos en espera para liberarlos al instante sin requerir que se complete el quórum (si no quedarían bloqueados).
+  - Iterando bajo `clients_lock`, el servidor invoca `shutdown` y `close` sobre la lista de sockets de clientes activos (`active_clients`). Esto aborta inmediatamente cualquier llamada `recv()` o `send()` bloqueante en los hilos secundarios.
+  - En el bloque `finally` de `run()`, el hilo principal realiza una iteración sobre `active_threads`, ejecutando un `join` sobre cada thread activo. Esto asegura un tiempo de finalización acotado y determinístico, evitando procesos "zombie" y permitiendo que el servidor termine con código de retorno `0`.
