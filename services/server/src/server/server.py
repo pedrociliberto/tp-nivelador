@@ -125,16 +125,7 @@ class Server:
             if agency_id is None:
                 return
 
-            while self.running:
-                bet_lines = protocol.recv_batch(client_socket)
-                if not bet_lines:
-                    break
-                for line in bet_lines:
-                    if line:
-                        client_bets.append(formatting.parse_bet(agency_id, line))
-                        bets_amount += 1          
-                protocol.send_ack(client_socket)
-
+            client_bets, bets_amount = self._receive_client_bets(client_socket, agency_id)
             if not self.running:
                 return
 
@@ -154,18 +145,7 @@ class Server:
 
             logger.info(self.LOG_QUORUM_WAIT, logger.LogResult.success, "agency-id", agency_id)
 
-            bets_generator = None
-            try:
-                bets_generator = self.lottery.load_bets()
-                for stored_bet in bets_generator:
-                    if not self.running:
-                        break
-                    if stored_bet.agency_id == agency_id and self.lottery.has_won(stored_bet):
-                        winner_line = formatting.format_winner(stored_bet)
-                        protocol.send_string_message(client_socket, winner_line)
-            finally: # This block ensures file closure
-                if bets_generator and hasattr(bets_generator, "close"):
-                    bets_generator.close()
+            self._send_winning_bets(client_socket, agency_id)
 
             if self.running:
                 protocol.send_header(client_socket, self.END_WINNER_LIST_HEADER)
@@ -183,6 +163,49 @@ class Server:
                 client_socket.close()
             except Exception:
                 pass
+
+    def _receive_client_bets(self, client_socket, agency_id):
+        """
+        Receives bets from the client in batches, parses them, and accumulates them in a list.
+        Args:
+            client_socket (socket): The socket connected to the client.
+            agency_id (str): The ID of the agency sending the bets.
+        Returns:
+            tuple: A tuple containing the list of parsed bets and the total number of bets received.
+        """
+        client_bets = []
+        bets_amount = 0
+        while self.running:
+            bet_lines = protocol.recv_batch(client_socket)
+            if not bet_lines:
+                break
+            for line in bet_lines:
+                if line:
+                    client_bets.append(formatting.parse_bet(agency_id, line))
+                    bets_amount += 1          
+            protocol.send_ack(client_socket)
+        return client_bets, bets_amount
+
+    def _send_winning_bets(self, client_socket, agency_id):
+        """
+        Sends the winning bets to the client. It iterates through the stored bets and checks if they are winning bets for the given agency.
+        If a winning bet is found, it formats the bet and sends it to the client.
+        Args:
+            client_socket (socket): The socket connected to the client.
+            agency_id (str): The ID of the agency for which to check winning bets.
+        """
+        bets_generator = None
+        try:
+            bets_generator = self.lottery.load_bets()
+            for stored_bet in bets_generator:
+                if not self.running:
+                    break
+                if stored_bet.agency_id == agency_id and self.lottery.has_won(stored_bet):
+                    winner_line = formatting.format_winner(stored_bet)
+                    protocol.send_string_message(client_socket, winner_line)
+        finally: # This block ensures file closure
+            if bets_generator and hasattr(bets_generator, "close"):
+                bets_generator.close()
 
     def run(self):
         """
