@@ -11,6 +11,7 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
 )
 
+// Loads the client configuration from environment variables. It checks for the presence of required variables and returns an error if any are missing. If all required variables are present, it constructs and returns a ClientConfig struct.
 func loadConfig() (client.ClientConfig, error) {
 	agencyId := os.Getenv("AGENCY_ID")
 	if agencyId == "" {
@@ -34,7 +35,8 @@ func loadConfig() (client.ClientConfig, error) {
 	}, nil
 }
 
-func run() int {
+// Entry point of the client application. It initializes the client, sets up signal handling for graceful shutdown, and starts the client's main run loop.
+func main() {
 	// Creates context that is cancelled when signal is received
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -42,13 +44,13 @@ func run() int {
 	config, err := loadConfig()
 	if err != nil {
 		logger.Error("load-config", logger.Fail, "err", err)
-		return 1
+		return
 	}
 
 	client, err := client.NewClient(config)
 	if err != nil {
 		logger.Error("client-new", logger.Fail, "err", err)
-		return 1
+		return
 	}
 
 	go func() {
@@ -60,14 +62,9 @@ func run() int {
 	if err := client.Run(ctx); err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) { // Context explicitly cancelled by SIGTERM: graceful
 			logger.Info("client-shutdown", logger.Success)
-			return 0
+			return
 		}
 		logger.Error("client-run", logger.Fail, "err", err)
-		return 1
+		return
 	}
-	return 0
-}
-
-func main() {
-	os.Exit(run())
 }
